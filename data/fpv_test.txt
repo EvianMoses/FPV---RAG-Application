@@ -1,0 +1,2 @@
+
+"An FPV drone consists of several key electronic components. The Flight Controller serves as the brain of the drone and processes flight data. The Electronic Speed Controller (ESC) receives commands from the flight controller and transfers electrical current from the battery to the motors. Most FPV drones use brushless motors that provide significant power. To see where you are flying, the system uses an FPV camera that transmits analog or digital video directly to the pilot's goggles.

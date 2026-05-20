@@ -1,0 +1,54 @@
+# ===============================================
+# FPViber - Git ignores
+# ===============================================
+
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Local databases & data (uncomment chat.db if you don't want to commit conversations)
+chat.db
+chat.db-journal
+chat.db-wal
+chat.db-shm
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local data dumps (keep `data/` content tracked - it's the knowledge base)
+# but ignore temporary downloads
+data/_tmp/

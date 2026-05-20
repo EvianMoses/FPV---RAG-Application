@@ -1,0 +1,21 @@
+# ===============================================
+# FPViber - FPV Drone RAG Assistant
+# Python dependencies (Python 3.11+)
+# ===============================================
+
+# Web framework
+Flask>=3.0.0
+
+# Vector index
+faiss-cpu>=1.8.0
+numpy>=1.26,<3.0
+
+# LLM client (Google Gemini, modern unified SDK)
+google-genai>=0.3.0
+
+# Embeddings via Hugging Face Inference API (ibm-granite/granite-embedding-97m-multilingual-r2)
+huggingface_hub>=0.24.0
+
+# Document loaders
+pypdf>=4.0.0          # PDF text + page-by-page extraction
+python-docx>=1.1.0    # DOCX (paragraphs + tables)
