@@ -1,4 +1,4 @@
-# FPViber — FPV Drone Knowledge Assistant
+# FPViber - FPV Drone Knowledge Assistant
 
 > A retrieval-augmented generation (RAG) chat assistant for everything FPV: building, configuring, flying, and troubleshooting first-person-view drones.
 
