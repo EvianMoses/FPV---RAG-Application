@@ -7,9 +7,7 @@ FPViber is a small Flask app that loads your FPV technical documentation (PDF / 
 
 ---
 
-
-
-https://github.com/user-attachments/assets/4e2ac04e-4723-4f79-bfd7-b1e06c7490ba
+https://github.com/user-attachments/assets/1aa4d00a-f60d-4df2-8967-b07c61e2ba49
 
 <details>
   <summary>📸 Click here to view examples of questions asked in the application (Screenshots)</summary>
