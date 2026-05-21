@@ -42,6 +42,7 @@ HF_TOKEN = os.environ.get(
 )
 
 
+
 # ==========================================================
 # CONFIGURATION
 # ==========================================================
@@ -60,7 +61,7 @@ RELEVANCE_THRESHOLD = 0.30
 
 OUT_OF_CONTEXT_PREFIX = (
     "I do not have enough information in the documents, "
-    "but based on general knowledge..."
+    "but based on general knowledge"
 )
 
 
@@ -259,12 +260,22 @@ class RAGEngine:
         "own line:\n"
         f"   {OUT_OF_CONTEXT_PREFIX}\n"
         "   ...and only then add a short, clearly-labelled general-knowledge answer.\n"
-        "4. If the question is empty, nonsensical, or completely unrelated to FPV, "
-        "answer with the same out-of-context sentence and politely ask the user to "
-        "clarify.\n"
-        "5. Use the CONVERSATION history only to resolve references like 'it' or "
+        "4.If the user's input is a greeting (e.g., 'hi', 'how are you') or completely unrelated to FPV, "
+        "reply exactly with: 'Your question is unrelated to FPV or does not appear in "
+        "the documents.' and guide the user to ask about FPV.\n"
+        "5. If the question is empty, a single letter, gibberish, or seems "
+        "incomplete/nonsensical, reply exactly with: 'Your message is unclear.' "
+        "and politely ask the user to clarify and guide the user to ask about FPV"
+        "Do NOT add the out-of-context prefix.\n" 
+        "6. Use the CONVERSATION history only to resolve references like 'it' or "
         "'the previous one'; never invent earlier turns.\n"
-        "6. Keep answers concise, technical and step-by-step where appropriate.\n"
+        "7. Keep answers concise, technical and step-by-step where appropriate.\n"
+        "8. CALCULATIONS: When asked about calculations, thrust, efficiency, torque, "
+        "battery draw, TWR, PID gains, or any quantitative FPV metric, you MUST "
+        "strictly use and apply the mathematical formulas provided in the <CONTEXT>. "
+        "Quote the formula from the documents first, then substitute values step by "
+        "step. Never substitute a different formula unless the out-of-context "
+        "disclaimer applies.\n"
     )
 
     def ask_gemini(

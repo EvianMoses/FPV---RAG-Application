@@ -13,6 +13,42 @@
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+        crossorigin="anonymous" />
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <style>
+        /* KaTeX inside assistant bubbles (dark theme) */
+        .message__content--md .katex {
+            font-size: 1.05em;
+            color: var(--text);
+        }
+
+        .message__content--md .katex-display {
+            margin: 0.65em 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        /* ----------------------------------------------------------
+           Typewriter <li> marker sync.
+
+           During the character-by-character animation in app.js,
+           every prose text node inside .message__content--md is
+           emptied and then progressively re-filled. Without this
+           rule, all bullet markers (•, 1., 2., ...) appear instantly
+           the moment the container is inserted, well before their
+           text is typed.
+
+           The post-app.js MutationObserver below toggles this class
+           on each <li> based on whether any of its prose text nodes
+           currently contain characters. The marker reappears at the
+           exact moment the typewriter reaches that item's first
+           character. No layout shift, no design change.
+           ---------------------------------------------------------- */
+        .message__content--md li.fpviber-hide-marker {
+            list-style-type: none;
+        }
+    </style>
 </head>
 
 <body>
@@ -21,8 +57,7 @@
         <defs>
             <!-- Drone (top-down quad) -->
             <symbol id="i-drone" viewBox="0 0 64 64">
-                <g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                    stroke-linejoin="round">
+                <g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="14" y1="14" x2="50" y2="50" />
                     <line x1="50" y1="14" x2="14" y2="50" />
                     <rect x="24" y="24" width="16" height="16" rx="2" />
@@ -36,8 +71,7 @@
 
             <!-- Propeller -->
             <symbol id="i-propeller" viewBox="0 0 24 24">
-                <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-                    stroke-linejoin="round">
+                <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 12c-3 -5 -8 -6 -10 -3s2 7 10 3z" />
                     <path d="M12 12c3 5 8 6 10 3s-2 -7 -10 -3z" />
                     <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
@@ -46,11 +80,11 @@
 
             <!-- Motor (brushless) -->
             <symbol id="i-motor" viewBox="0 0 24 24">
-                <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-                    stroke-linejoin="round">
+                <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="8" />
                     <circle cx="12" cy="12" r="3" />
-                    <path d="M12 4v3M12 17v3M4 12h3M17 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1" />
+                    <path
+                        d="M12 4v3M12 17v3M4 12h3M17 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1" />
                 </g>
             </symbol>
 
@@ -110,7 +144,7 @@
         </defs>
     </svg>
 
-    <div class="app">
+    <div class="app sidebar-collapsed">
         <!-- ============== SIDEBAR ============== -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar__header">
@@ -228,7 +262,194 @@
         </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+        crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        /**
+         * KaTeX integration for FPViber.
+         *
+         * Rendering order for NEW messages:
+         *   1. marked.js  ->  HTML (in renderMarkdownHtml, app.js)
+         *   2. KaTeX      ->  builds .katex spans BEFORE the TreeWalker runs
+         *                    (called from revealTypewriter via window.renderFPViberMath)
+         *   3. Typewriter ->  walks only prose text nodes (skips .katex subtree)
+         *
+         * Rendering order for LOADED history:
+         *   setMessageContent sets innerHTML then calls renderFPViberMath immediately.
+         *
+         * A MutationObserver dedicated to KaTeX is intentionally NOT used here -
+         * it fired during the character-by-character animation loop and caused
+         * KaTeX to re-process partially-revealed text nodes, invalidating the
+         * TreeWalker references and dropping large portions of the response.
+         */
+        (function () {
+            const DELIMITERS = [
+                { left: "$$", right: "$$", display: true },
+                { left: "\\[", right: "\\]", display: true },
+                { left: "$", right: "$", display: false },
+                { left: "\\(", right: "\\)", display: false },
+            ];
+
+            function renderFPViberMath(el) {
+                if (!el || typeof renderMathInElement !== "function") return;
+                if (el.dataset.katexRendered === "1") return;
+                try {
+                    renderMathInElement(el, {
+                        delimiters: DELIMITERS,
+                        throwOnError: false,
+                        strict: false,
+                        trust: false,
+                    });
+                    el.dataset.katexRendered = "1";
+                } catch (err) {
+                    console.warn("[FPViber] KaTeX render failed:", err);
+                }
+            }
+
+            // Exposed globally so revealTypewriter (app.js) can call it
+            // before collecting text segments for the animation.
+            window.renderFPViberMath = renderFPViberMath;
+
+            // ------------------------------------------------------------
+            // Typewriter <li> marker sync.
+            //
+            // Why this exists:
+            //   app.js's revealTypewriter empties every prose text node and
+            //   then refills it character by character. <li> elements stay
+            //   in the DOM throughout, so their default markers paint
+            //   immediately - long before their text is typed.
+            //
+            // How it works:
+            //   1. A MutationObserver watches `#messages` for added
+            //      `.message__content--md` containers AND for characterData
+            //      changes inside them.
+            //   2. When a container is added, every <li> inside is checked.
+            //      LIs whose prose text nodes are currently empty get
+            //      `.fpviber-hide-marker`, which sets `list-style-type:none`.
+            //   3. When the typewriter writes the first character into a
+            //      text node, the characterData mutation fires the observer.
+            //      The owning <li> is re-checked and the class is removed -
+            //      the marker reappears at exactly that moment.
+            //
+            // Why this DOESN'T break the typewriter / chat rendering:
+            //   - We never touch text nodes or change innerHTML.
+            //   - We never override revealTypewriter, setMessageContent, or
+            //     appendAssistantAnimated. app.js drives the animation
+            //     unchanged.
+            //   - Only a CSS class toggle on the <li> is performed, which
+            //     causes no DOM-structural changes and no layout shift
+            //     (the marker is in the "outside" list position).
+            //   - The TreeWalker we use to inspect <li> contents is local
+            //     to the observer callback - it never holds references that
+            //     the typewriter relies on.
+            //
+            // KaTeX interaction:
+            //   - An <li> that contains a rendered .katex subtree is treated
+            //     as "having visible content" (math is painted immediately),
+            //     so its marker is never hidden. This keeps math-only or
+            //     mixed math+prose items visually consistent.
+            // ------------------------------------------------------------
+
+            function liHasVisibleProseText(li) {
+                // Math is painted immediately, so an LI that owns rendered
+                // KaTeX is considered visible right away.
+                if (li.querySelector(".katex")) return true;
+                const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT, {
+                    acceptNode(node) {
+                        if (node.parentElement && node.parentElement.closest(".katex")) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                        return NodeFilter.FILTER_ACCEPT;
+                    },
+                });
+                let n;
+                while ((n = walker.nextNode())) {
+                    if (n.textContent && n.textContent.length > 0) return true;
+                }
+                return false;
+            }
+
+            function applyMarkerStateToLi(li) {
+                if (liHasVisibleProseText(li)) {
+                    li.classList.remove("fpviber-hide-marker");
+                } else {
+                    li.classList.add("fpviber-hide-marker");
+                }
+            }
+
+            function syncMarkersInContainer(container) {
+                container.querySelectorAll("li").forEach(applyMarkerStateToLi);
+            }
+
+            function setupListMarkerSync() {
+                const messagesEl = document.getElementById("messages");
+                if (!messagesEl) return;
+
+                const obs = new MutationObserver(function (records) {
+                    const containers = new Set();
+                    const items = new Set();
+
+                    for (const r of records) {
+                        if (r.type === "characterData") {
+                            const parent = r.target.parentElement;
+                            if (!parent) continue;
+                            // Ignore characterData mutations inside KaTeX-rendered nodes.
+                            if (parent.closest(".katex")) continue;
+                            const li = parent.closest("li");
+                            if (li) items.add(li);
+                        } else if (r.type === "childList" && r.addedNodes) {
+                            r.addedNodes.forEach(function (node) {
+                                if (node.nodeType !== 1) return;
+                                if (node.classList && node.classList.contains("message__content--md")) {
+                                    containers.add(node);
+                                }
+                                if (node.querySelectorAll) {
+                                    node.querySelectorAll(".message__content--md").forEach(function (c) {
+                                        containers.add(c);
+                                    });
+                                }
+                            });
+                        }
+                    }
+
+                    containers.forEach(syncMarkersInContainer);
+                    items.forEach(applyMarkerStateToLi);
+                });
+
+                obs.observe(messagesEl, {
+                    childList: true,
+                    subtree: true,
+                    characterData: true,
+                });
+            }
+
+            // Wrap setMessageContent so history messages also get math rendering.
+            // revealTypewriter handles its own KaTeX call internally, so no wrap needed there.
+            function wrapWhenReady() {
+                if (typeof setMessageContent !== "function") {
+                    return requestAnimationFrame(wrapWhenReady);
+                }
+                const _setContent = setMessageContent;
+                setMessageContent = function (el, msg) {
+                    _setContent(el, msg);
+                    if (msg.role === "assistant") renderFPViberMath(el);
+                };
+            }
+
+            function boot() {
+                wrapWhenReady();
+                setupListMarkerSync();
+            }
+
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", boot);
+            } else {
+                boot();
+            }
+        })();
+    </script>
 </body>
 
 </html>

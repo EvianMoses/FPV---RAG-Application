@@ -43,9 +43,14 @@ SEPARATORS = ["\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " "]
 
 _MATH_PATTERNS = [
     re.compile(r"\$\$.+?\$\$", re.DOTALL),
-    re.compile(r"\\\[.+?\\\]", re.DOTALL),
-    re.compile(r"\\\(.+?\\\)", re.DOTALL),
+    re.compile(r"\\\[[\s\S]+?\\\]", re.DOTALL),
+    re.compile(r"\\\([\s\S]+?\\\)", re.DOTALL),
     re.compile(r"\$[^$\n]+\$"),
+    # Loader-wrapped display equations and dense calculation lines
+    re.compile(
+        r"^\\\[.+?\\\]$",
+        re.DOTALL | re.MULTILINE,
+    ),
 ]
 
 

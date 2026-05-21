@@ -68,6 +68,95 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// ==========================================================
+// Markdown + typewriter (parse first, reveal text nodes)
+// ==========================================================
+function renderMarkdownHtml(text) {
+    if (!text) return "";
+    if (typeof marked !== "undefined") {
+        return marked.parse(text, { breaks: true, gfm: true });
+    }
+    return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
+function collectTextSegments(root) {
+    const segments = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            // Never walk inside KaTeX-rendered elements — those nodes are
+            // managed by KaTeX and must not be blanked or overwritten.
+            if (node.parentElement && node.parentElement.closest(".katex")) {
+                return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+        },
+    });
+    let node;
+    while ((node = walker.nextNode())) {
+        const full = node.textContent;
+        if (!full) continue;
+        segments.push({ node, full });
+    }
+    return segments;
+}
+
+function applyTypewriterProgress(segments, charCount) {
+    let remain = charCount;
+    for (const seg of segments) {
+        if (remain <= 0) {
+            seg.node.textContent = "";
+        } else if (remain >= seg.full.length) {
+            seg.node.textContent = seg.full;
+            remain -= seg.full.length;
+        } else {
+            seg.node.textContent = seg.full.slice(0, remain);
+            remain = 0;
+        }
+    }
+}
+
+function scrollMessagesToBottom() {
+    requestAnimationFrame(() => {
+        els.messages.scrollTop = els.messages.scrollHeight;
+    });
+}
+
+async function revealTypewriter(container, markdownText, speed = 14) {
+    container.innerHTML = renderMarkdownHtml(markdownText);
+    container.classList.add("message__content--md");
+
+    // Render math BEFORE collecting text segments.
+    // This lets KaTeX build its own span subtree first so the TreeWalker
+    // can skip those nodes entirely — preventing the animation from
+    // blanking or corrupting rendered formulas.
+    if (typeof window.renderFPViberMath === "function") {
+        window.renderFPViberMath(container);
+    }
+
+    // Collect only prose text nodes (KaTeX internals are excluded by the walker filter).
+    const segments = collectTextSegments(container);
+    if (!segments.length) return;
+
+    for (const seg of segments) seg.node.textContent = "";
+    const total = segments.reduce((n, s) => n + s.full.length, 0);
+
+    for (let pos = 1; pos <= total; pos++) {
+        applyTypewriterProgress(segments, pos);
+        scrollMessagesToBottom();
+        await new Promise(r => setTimeout(r, speed));
+    }
+    for (const seg of segments) seg.node.textContent = seg.full;
+}
+
+function setMessageContent(el, msg) {
+    if (msg.role === "user") {
+        el.textContent = msg.content;
+        return;
+    }
+    el.innerHTML = renderMarkdownHtml(msg.content);
+    el.classList.add("message__content--md");
+}
+
 function svgIcon(id, className = "") {
     return `<svg class="${className}" aria-hidden="true"><use href="#${id}"></use></svg>`;
 }
@@ -286,7 +375,7 @@ function renderMessage(msg) {
 
     const content = document.createElement("div");
     content.className = "message__content";
-    content.textContent = msg.content;
+    setMessageContent(content, msg);
 
     body.appendChild(role);
     body.appendChild(content);
@@ -380,7 +469,7 @@ function appendMessageEphemeral(msg) {
     els.messages.scrollTop = els.messages.scrollHeight;
 }
 
-function appendDroneLoader() {
+function appendWaveLoader() {
     let inner = els.messages.querySelector(".messages__inner");
     if (!inner) {
         els.messages.innerHTML = "";
@@ -388,17 +477,19 @@ function appendDroneLoader() {
         inner.className = "messages__inner";
         els.messages.appendChild(inner);
     }
+    els.messages.classList.add("is-waiting");
     const wrap = document.createElement("div");
     wrap.className = "message message--assistant";
-    wrap.id = "droneLoader";
+    wrap.id = "waveLoader";
     wrap.innerHTML = `
         <div class="message__avatar">${svgIcon("i-drone")}</div>
         <div class="message__body">
             <div class="message__role">FPViber</div>
             <div class="message__content">
-                <div class="drone-loader">
-                    <div class="drone-loader__sky">
-                        <svg class="drone-loader__drone" viewBox="0 0 64 64" aria-hidden="true">
+                <div class="wave-loader">
+                    <div class="wave-loader__bg" aria-hidden="true"></div>
+                    <div class="wave-loader__content">
+                        <svg class="wave-loader__drone" viewBox="0 0 64 64" aria-hidden="true">
                             <g fill="none" stroke="currentColor" stroke-width="2.5"
                                stroke-linecap="round" stroke-linejoin="round">
                                 <line x1="14" y1="14" x2="50" y2="50"/>
@@ -411,19 +502,60 @@ function appendDroneLoader() {
                                 <circle cx="32" cy="32" r="2" fill="currentColor"/>
                             </g>
                         </svg>
+                        <span class="wave-loader__label">FPViber is thinking</span>
                     </div>
-                    <span class="drone-loader__text">FPViber is flying</span>
                 </div>
             </div>
         </div>
     `;
     inner.appendChild(wrap);
-    els.messages.scrollTop = els.messages.scrollHeight;
+    scrollMessagesToBottom();
 }
 
-function removeDroneLoader() {
-    const t = document.getElementById("droneLoader");
+function removeWaveLoader() {
+    els.messages.classList.remove("is-waiting");
+    const t = document.getElementById("waveLoader");
     if (t) t.remove();
+}
+
+function buildAssistantShell() {
+    const wrap = document.createElement("div");
+    wrap.className = "message message--assistant";
+    const avatar = document.createElement("div");
+    avatar.className = "message__avatar";
+    avatar.innerHTML = svgIcon("i-drone");
+    const body = document.createElement("div");
+    body.className = "message__body";
+    const role = document.createElement("div");
+    role.className = "message__role";
+    role.textContent = "FPViber";
+    const content = document.createElement("div");
+    content.className = "message__content";
+    body.appendChild(role);
+    body.appendChild(content);
+    wrap.appendChild(avatar);
+    wrap.appendChild(body);
+    return { wrap, body, content };
+}
+
+async function appendAssistantAnimated(msg) {
+    let inner = els.messages.querySelector(".messages__inner");
+    if (!inner) {
+        els.messages.innerHTML = "";
+        inner = document.createElement("div");
+        inner.className = "messages__inner";
+        els.messages.appendChild(inner);
+    }
+    const { wrap, body, content } = buildAssistantShell();
+    inner.appendChild(wrap);
+    await revealTypewriter(content, msg.content);
+
+    const sources = collectSources(msg);
+    if (sources.length > 0) body.appendChild(renderSources(sources));
+    if (Array.isArray(msg.context) && msg.context.length > 0) {
+        body.appendChild(renderContext(msg.context));
+    }
+    scrollMessagesToBottom();
 }
 
 // ==========================================================
@@ -455,19 +587,19 @@ async function sendMessage(content) {
     };
     state.messages.push(tempUser);
     appendMessageEphemeral(tempUser);
-    appendDroneLoader();
+    appendWaveLoader();
 
     els.input.value = "";
     autoresize(els.input);
 
     try {
         const result = await API.sendMessage(state.activeSessionId, text);
-        removeDroneLoader();
+        removeWaveLoader();
 
         const userIdx = state.messages.findIndex(m => m.id === tempUser.id);
         if (userIdx !== -1) state.messages[userIdx] = result.user_message;
         state.messages.push(result.assistant_message);
-        appendMessageEphemeral(result.assistant_message);
+        await appendAssistantAnimated(result.assistant_message);
 
         await loadSessions();
         const updated = state.sessions.find(s => s.id === state.activeSessionId);
@@ -476,7 +608,7 @@ async function sendMessage(content) {
         }
         els.conversationMeta.textContent = `${state.messages.length} messages`;
     } catch (err) {
-        removeDroneLoader();
+        removeWaveLoader();
         toast(err.message || "Failed to send message", { error: true });
     } finally {
         state.isSending = false;
@@ -509,8 +641,11 @@ els.renameBtn.addEventListener("click", renameActiveSession);
 els.deleteBtn.addEventListener("click", deleteActiveSession);
 
 els.toggleSidebar.addEventListener("click", () => {
-    els.app.classList.toggle("sidebar-collapsed");
-    els.app.classList.toggle("sidebar-open");
+    if (window.matchMedia("(max-width: 720px)").matches) {
+        els.app.classList.toggle("sidebar-open");
+    } else {
+        els.app.classList.toggle("sidebar-collapsed");
+    }
 });
 
 els.suggestions?.addEventListener("click", e => {
