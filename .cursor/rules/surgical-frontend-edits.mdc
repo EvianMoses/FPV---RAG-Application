@@ -1,0 +1,55 @@
+---
+description: Surgical frontend editing standards for HTML/CSS/JS — preserves design integrity, protects live DOM elements, and handles Hebrew/English bidirectional text.
+globs: **/*.html, **/*.css, **/*.js
+alwaysApply: false
+---
+
+# Surgical Frontend Edits
+
+## Core constraint
+**Never alter existing design, layout, colors, animations, or component structure unless explicitly requested.** If a change to accomplish a task would require touching a critical unrelated area, stop and ask before proceeding.
+
+### Escape hatch
+This constraint lifts when the user explicitly asks to "fix layout", "fix design", "fix the UI", or otherwise explicitly grants permission to modify the visual design. In that case, make the requested visual changes freely — the constraint only guards against *unrequested* drive-by design changes while doing unrelated work.
+
+## DOM mutation — protect live/stateful nodes only
+The rule is about **stateful elements**, not all DOM writes:
+
+- **Active/stateful elements** (playing iframes, audio/video players, embeds, form inputs with live focus/values) — always use `createElement` / `appendChild` or `insertAdjacentHTML` for the surrounding container so these nodes are never destroyed and recreated.
+- **Static content** (markdown text, plain message bubbles with no embedded live media) — `innerHTML` is fine and often keeps the code cleaner and shorter. Don't force `createElement` here.
+
+```js
+// ✅ GOOD — static text, innerHTML is fine
+messageEl.innerHTML = marked.parse(rawText);
+
+// ✅ GOOD — stateful element (iframe) built via createElement so it survives re-renders
+const iframe = document.createElement('iframe');
+iframe.src = `https://open.spotify.com/embed/track/${trackId}`;
+container.appendChild(iframe);
+
+// ❌ BAD — innerHTML += on a container that already holds a playing iframe destroys it
+container.innerHTML += `<div class="message">${text}</div>`;
+```
+
+## Typewriter / markdown / math animations
+Parse markdown (marked.js) and math (KaTeX) to full HTML **first**, then reveal the resulting HTML incrementally. Never split raw HTML tags mid-animation or feed unparsed markdown to the typewriter character loop.
+
+```js
+// ✅ GOOD
+const html = marked.parse(rawText);
+revealTypewriter(element, html);   // reveal pre-rendered HTML
+
+// ❌ BAD
+revealTypewriter(element, rawText); // raw markdown gets split mid-tag
+```
+
+## Hebrew / English bidirectional text
+- Add `dir="auto"` to every element that displays user or AI chat text.
+- Use `text-align: start` (never `text-align: left` or `right`) for chat bubbles.
+- Test mixed strings like `"Recommend אמנים like Radiohead"` before committing.
+
+## Mobile keyboard
+After form submission or Enter-key send, call `document.activeElement.blur()` immediately so the soft keyboard closes on mobile.
+
+## CSS precision
+When fixing pixel-level alignment (logo kerning, baseline mismatches), use `transform: translateY()` or negative `margin` rather than adding wrapper divs that shift surrounding layout.

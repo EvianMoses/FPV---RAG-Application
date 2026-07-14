@@ -1,0 +1,111 @@
+---
+description: Conventions for AWS Bedrock Agents/Lambdas, Google Gemini (google-genai SDK), Pinecone, and OAuth session management in Python projects.
+globs: **/*.py
+alwaysApply: false
+---
+
+# AI Services Playbook
+
+## AWS Bedrock — Lambda Action Groups
+
+Parse parameters and return the exact envelope. `body` must be a JSON **string**, not a dict.
+
+```python
+def get_parameter(event, name):
+    for p in event.get("parameters", []) or []:
+        if p.get("name") == name:
+            return p.get("value")
+    return None
+
+def build_response(event, body, status_code=200):
+    return {
+        "messageVersion": "1.0",
+        "response": {
+            "actionGroup": event.get("actionGroup"),
+            "apiPath": event.get("apiPath"),
+            "httpMethod": event.get("httpMethod"),
+            "httpStatusCode": status_code,
+            "responseBody": {"application/json": {"body": body}},
+        },
+    }
+
+def lambda_handler(event, context):
+    api_path = event.get("apiPath")
+    try:
+        if api_path == "/example":
+            result = json.dumps(do_work(event))
+        else:
+            result = f"Unsupported route: {api_path}"
+    except Exception as e:
+        result = f"Action failed: {e}"
+    return build_response(event, result)
+```
+
+- Never raise unhandled exceptions from `lambda_handler`.
+- Return `httpStatusCode: 200` even for errors so the LLM can read the payload.
+
+## AWS Bedrock — session management
+- Use a **stable, server-side** session ID for Bedrock `sessionId` (Flask `session['session_id']`).
+- Never use a volatile frontend-generated ID (e.g. `crypto.randomUUID()` per page load) as the Bedrock `sessionId` — this breaks agent memory across reloads.
+
+## Google Gemini — backward compatibility first
+Before touching any Gemini import, scan the file's existing imports.
+
+- If the file already imports `google.generativeai` (legacy SDK), **adapt new code to match that existing pattern**. Do not migrate it to `google-genai` unless the user explicitly asks for a migration.
+- Only use the new SDK below for **new files**, or when the user explicitly requests an upgrade.
+
+```python
+# ✅ GOOD — new file, new SDK
+from google import genai
+ai_client = genai.Client(api_key=GEMINI_API_KEY)
+
+# ✅ ALSO GOOD — existing file already on the legacy SDK; keep using it
+import google.generativeai as genai
+genai.configure(api_key=GEMINI_API_KEY)
+```
+
+- Embedding model name: `"gemini-embedding-001"` (768 dims) or `"text-embedding-004"` (768 dims). Use the same model in both `/vectorize` and `/search` — mismatched dims cause Pinecone errors.
+- Do NOT prefix the model name with `"models/"` when using `genai.Client`; the SDK adds it automatically.
+
+## Pinecone
+- Index dimension must match the embedding model output exactly (768 for both Gemini embedding models above).
+- Always use `cosine` metric for text embeddings.
+
+## Module-level AI client initialization
+
+```python
+# ✅ GOOD — visible failure
+try:
+    ai_client = genai.Client(api_key=GEMINI_API_KEY)
+except Exception as e:
+    print(f"[INIT] Gemini client failed: {e}")
+    ai_client = None
+
+# ❌ BAD — silent None
+ai_client = None
+try:
+    ai_client = genai.Client(api_key=GEMINI_API_KEY)
+except Exception:
+    pass
+```
+
+Always print the **exact exception** on init failure so the bug is visible in logs.
+
+## Config and secrets
+
+```python
+# Load .env by absolute path so it works regardless of cwd
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=True)
+
+KEY = os.getenv("MY_API_KEY")  # no fallback value — ever
+```
+
+- `override=True` ensures `.env` beats stale shell environment variables.
+- Never supply a real key as a fallback in `os.getenv("KEY", "actual_secret_here")`.
+
+## Spotify OAuth token management
+- Store the full token dict (including `refresh_token` and `expires_at`) in Flask session at `/callback`.
+- Use a `get_valid_spotify_token()` helper that checks expiry and refreshes before returning the token.
+- Use `FlaskSessionCacheHandler(session)` — never the default file cache — to prevent cross-user token leaks.
